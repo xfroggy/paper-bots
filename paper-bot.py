@@ -34,6 +34,19 @@ def add_signals(df: pd.DataFrame, ma_period: int) -> pd.DataFrame:
     df["exit"]  = (df["in_trend_prev"] == 1) & (df["in_trend"] == 0)
     return df
 
+def latest_signal(df: pd.DataFrame) -> tuple[str, str]:
+    """
+    Returns (signal, date_str) where signal in {"BUY","SELL","HOLD"} based on latest row.
+    """
+    last = df.iloc[-1]
+    date_str = str(df.index[-1].date())
+
+    if bool(last["entry"]):
+        return "BUY", date_str
+    if bool(last["exit"]):
+        return "SELL", date_str
+    return "HOLD", date_str
+
 def backtest(df: pd.DataFrame, initial_cash: float) -> tuple[float, float, pd.DataFrame, pd.Series]:
     cash = float(initial_cash)
     units = 0.0  # shares for stocks, coin units for crypto
@@ -71,6 +84,19 @@ def max_drawdown_pct(equity: pd.Series) -> float:
 def ensure_out_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
+def write_latest_signal(out_dir: str, symbol: str, signal: str, date_str: str) -> str:
+    """
+    Writes a simple text file used by GitHub Actions to decide whether to send email.
+    Returns the filepath.
+    """
+    safe_symbol = symbol.replace("-", "_")
+    path = os.path.join(out_dir, f"{safe_symbol}_latest_signal.txt")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"symbol={symbol}\n")
+        f.write(f"date={date_str}\n")
+        f.write(f"signal={signal}\n")
+    return path
+
 def main():
     parser = argparse.ArgumentParser(description="Daily paper trading/backtest bot (trend following).")
     parser.add_argument("--market", choices=["stocks", "crypto"], default="stocks",
@@ -98,8 +124,13 @@ def main():
     df = fetch_data(cfg.symbol, cfg.start)
     df = add_signals(df, cfg.ma_period)
 
+    sig, sig_date = latest_signal(df)
+    sig_path = write_latest_signal(cfg.out_dir, cfg.symbol, sig, sig_date)
+
     print(f"\nSymbol: {cfg.symbol}")
     print(f"Start: {cfg.start} | MA: {cfg.ma_period} | Bars: {len(df)}")
+    print(f"Latest Signal: {sig} on {sig_date}")
+    print(f"Signal file: {sig_path}")
     print(f"Capitals: {cfg.initial_capitals}\n")
 
     summary_rows = []
@@ -141,4 +172,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
