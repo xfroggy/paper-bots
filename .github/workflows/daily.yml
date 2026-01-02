@@ -2,9 +2,7 @@
 
 on:
   schedule:
-    # Cron is UTC:
-    # 00:10 UTC = 7:10 PM Miami (EST, UTC-5) in winter
-    # 00:10 UTC = 8:10 PM Miami (EDT, UTC-4) in summer
+    # Cron is UTC. Adjust as needed.
     - cron: "10 0 * * *"
   workflow_dispatch: {}
 
@@ -33,6 +31,56 @@ jobs:
       - name: Run CRYPTO bot (BTC-USD)
         run: |
           python paper_bot.py --market crypto --capitals 100,1000 --start 2020-01-01 --ma 50 --out output
+
+      - name: Determine if we should email (BUY/SELL only)
+        id: decide
+        run: |
+          python - << 'PY'
+          import os, glob
+
+          files = glob.glob("output/*_latest_signal.txt")
+          lines = []
+          should_email = False
+
+          for fp in sorted(files):
+              data = {}
+              with open(fp, "r", encoding="utf-8") as f:
+                  for line in f:
+                      if "=" in line:
+                          k, v = line.strip().split("=", 1)
+                          data[k] = v
+
+              symbol = data.get("symbol", "UNKNOWN")
+              date = data.get("date", "UNKNOWN")
+              signal = data.get("signal", "HOLD")
+
+              lines.append(f"{symbol} — {signal} — {date}")
+              if signal in ("BUY", "SELL"):
+                  should_email = True
+
+          body = "Daily paper-bot signals:\n\n" + "\n".join(lines) + "\n"
+          print(body)
+
+          with open("email_body.txt", "w", encoding="utf-8") as f:
+              f.write(body)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write(f"should_email={str(should_email).lower()}\n")
+          PY
+
+
+      - name: Send email alert (only on BUY/SELL)
+        if: steps.decide.outputs.should_email == 'true'
+        uses: dawidd6/action-send-mail@v4
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "Paper Bot Alert: BUY/SELL Signal"
+          to: ${{ secrets.EMAIL_TO }}
+          from: ${{ secrets.EMAIL_FROM }}
+          body: file://email_body.txt
 
       - name: Upload output as artifact
         uses: actions/upload-artifact@v4
