@@ -1,0 +1,41 @@
+﻿name: Daily Paper Bots (Stocks + Crypto)
+
+on:
+  schedule:
+    # Cron is UTC:
+    # 00:10 UTC = 7:10 PM Miami (EST, UTC-5) in winter
+    # 00:10 UTC = 8:10 PM Miami (EDT, UTC-4) in summer
+    - cron: "10 0 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  run-bots:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run STOCK bot (SPY)
+        run: |
+          python paper_bot.py --market stocks --capitals 100,1000 --start 2020-01-01 --ma 50 --out output
+
+      - name: Run CRYPTO bot (BTC-USD)
+        run: |
+          python paper_bot.py --market crypto --capitals 100,1000 --start 2020-01-01 --ma 50 --out output
+
+      - name: Upload output as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-bot-output
+          path: output/
