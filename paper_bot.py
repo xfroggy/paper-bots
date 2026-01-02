@@ -13,11 +13,22 @@ class Config:
     out_dir: str
 
 def fetch_data(symbol: str, start: str) -> pd.DataFrame:
-    df = yf.download(symbol, start=start, auto_adjust=True, progress=False)
+    df = yf.download(symbol, start=start, auto_adjust=True, progress=False, group_by="column")
+
     if df is None or df.empty:
         raise ValueError(f"No data returned for symbol={symbol}.")
+
+    # yfinance sometimes returns MultiIndex columns; flatten them if needed
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    # Ensure we have a single Close series
     if "Close" not in df.columns:
-        raise ValueError("Downloaded data missing Close column.")
+        raise ValueError(f"Downloaded data missing Close column for symbol={symbol}. Columns: {list(df.columns)}")
+
+    # Keep only the columns we actually need
+    df = df[["Open", "High", "Low", "Close", "Volume"]].copy()
+
     return df
 
 def add_signals(df: pd.DataFrame, ma_period: int) -> pd.DataFrame:
